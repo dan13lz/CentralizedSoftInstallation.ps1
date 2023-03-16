@@ -1,0 +1,124 @@
+<#PSScriptInfo
+.VERSION 1.1
+.GUID 3b0fe24d-19b0-4ed7-a6ad-aab3e59f3b98
+.AUTHOR daniil.zalivakhin@ma.ru
+.COMPANYNAME Major Auto
+.COPYRIGHT Major Auto
+.DESCRIPTION - Cкрипт проводит централизованную тихую установку программ.
+.RELEASENOTES
+    2023-01-23: Изначальная версия.
+#>
+<#
+.SYNOPSIS
+    - Cкрипт проводит централизованную тихую установку программ. ПосредствомPowershell, PSexec и Msiexec.
+
+
+
+.DESCRIPTION
+    Действия скрипта:
+        * Проверяет доступность ПК по сети;
+        * Проверяет версию ОС(win7 или win10);
+        * Проверяет установлен ли Яндекс браузер;
+        * Копирует нужные файлы для установки на ПК пользователя;
+        * Проводит тихую установку программ в зависимости от версии ОС с публикацией ярлыка на рабочий стол пользователя.
+    Для работы скрипта требуется:
+        * Включенная политика использования скриптов на ПК через Powershell: Set-ExecutionPolicy RemoteSigned;
+        * Установленный на доменной машине PSexec;
+        * Указать список ПК в массиве $Collection;
+        * Запускать скрипт от .adm.
+
+.NOTES
+    Версия:          1.1 (2023-01-23)
+    Автор:           Заливахин Даниил Антонович
+    Должность:       системный администратор
+    Рабочий телефон: +7 (495) 730-80-06 доб. 24010
+    Внутренняя почта: Заливахин Даниил MAJOR IT MKD <daniil.zalivakhin@ma.ru>
+#>
+
+# PC collection for softwere install
+$Collection = @(
+"M47-MZD-INS07",
+"M47-MZD-INS09",
+"M47-MZD-INS10",
+"M47-MZD-INS08",
+"M47-JLR-INS05",
+"M47-KIA-INS08",
+"M47-N-INS02",
+"M47-KIA-INS01",
+"M47-MZD-INS05",
+"M47-VW-INS01",
+"M47-KIA-INS0",
+"M47-MZD-INS05",
+"M47-N-INS02",
+"M47-KIA-INS01",
+"M47-MZD-INS05",
+"M47-VW-INS01",
+"M47-KIA-INS0",
+"M47-MZD-INS05"
+)
+
+$ConnectList = @()
+foreach($PC in $Collection){
+    # Checking PC connection
+    $check_connect = Test-Connection -ComputerName $PC -Quiet -Count 1 -ErrorAction SilentlyContinue
+    if($check_connect){
+        Write-Host "$PC"  " online"
+        $check_os = get-adcomputer $PC -Properties OperatingSystem | where {$_.OperatingSystem -like "*10*"}
+        if($check_os){
+            # WIN 10
+            # Softwere exist? Checking...
+            $Softwere_check = (Get-ChildItem "\\$PC\c$\Program Files (x86)\Yandex\YandexBrowser\Application\browser.exe" -Include "browser.exe").FullName
+            if($Softwere_check){
+                # softwere installed... skip
+            }
+            else {
+                # Start installing Yandex Browser for Windows 10
+                Write-Host "Starting install files copy process..."
+                $AppPath = "\\$PC\c$\Application"
+                New-Item $AppPath -ItemType Directory -ErrorAction:SilentlyContinue -force
+                Copy-Item -Path "\\m47-ws1\C$\Application\Yandex_Browser.msi", "\\m47-ws1\C$\Application\russian_trusted_sub_ca.cer", "\\m47-ws1\C$\Application\russian_trusted_root_ca.cer" -Destination "$AppPath"
+                Copy-Item -Path "\\m47-ws1\C$\Application\PSTools" -Destination "\\$PC\c$\Windows\System32" -Recurse -force    
+                Start-Sleep -Seconds 8
+                Write-Host "Continue"
+                Write-Host "Starting Yandex Browser install process..."
+                C:\Windows\System32\PSTools\PsExec.exe -accepteula \\$PC c:\Windows\system32\msiexec.exe /i "$AppPath\Yandex_Browser.msi" /qn /quiet /norestart
+                Write-Host "Starting Browser files copy process..."
+                # Searching desktops for yandex.lnk paste
+                $desktop_search = (Get-ChildItem "\\$PC\c$\Users\" -Recurse -Include "Desktop").FullName
+                Start-Sleep -Seconds 240
+                foreach($Path in $desktop_search){
+                    Copy-Item -Path "\\m47-ws1\C$\Application\Yandex lnk for win 10\Yandex.lnk" -Destination "$Path" -force
+                }  
+                c:\Windows\System32\PSTools\PsExec.exe -accepteula "\\$PC" -s -h powershell.exe msg * /time:999999 /server:$PC "Добрый день. Просьба проверить, работу Яндекс браузера"                    
+            }
+        }  
+        else {
+            # WIN 7
+            $Softwere_check = (Get-ChildItem "\\$PC\c$\Program Files\Yandex\YandexBrowser\Application\browser.exe" -Include "browser.exe").FullName
+            if($Softwere_check){
+                # softwere installed... skip
+            }
+            else {
+                # Start installing Yandex Browser for Windows 7
+                Write-Host "Starting install files copy process..."
+                $AppPath = "\\$PC\c$\Application"
+                New-Item $AppPath -ItemType Directory -ErrorAction:SilentlyContinue -force
+                Copy-Item -Path "\\m47-ws1\C$\Application\Yandex_Browser.msi", "\\m47-ws1\C$\Application\russian_trusted_sub_ca.cer", "\\m47-ws1\C$\Application\russian_trusted_root_ca.cer" -Destination "$AppPath"
+                Copy-Item -Path "\\m47-ws1\C$\Application\PSTools" -Destination "\\$PC\c$\Windows\System32" -Recurse -force    
+                Start-Sleep -Seconds 8
+                Write-Host "Continue"
+                Write-Host "Starting Yandex Browser install process..."
+                C:\Windows\System32\PSTools\PsExec.exe -accepteula \\$PC c:\Windows\system32\msiexec.exe /i "$AppPath\Yandex_Browser.msi" /qn /quiet /norestart
+                Write-Host "Starting Browser files copy process..."
+                # Searching desktops for yandex.lnk paste
+                $desktop_search = (Get-ChildItem "\\$PC\c$\Users\" -Recurse -Include "Desktop").FullName
+                Start-Sleep -Seconds 240
+                foreach($Path in $desktop_search){
+                    Copy-Item -Path "\\m47-ws1\C$\Application\Yandex lnk for win 7\Yandex.lnk" -Destination "$Path" -force
+                }  
+                c:\Windows\System32\PSTools\PsExec.exe -accepteula "\\$PC" -s -h powershell.exe msg * /time:999999 /server:$PC "Добрый день. Просьба проверить, работу Яндекс браузера"                  
+            }
+        } # end $check_os block
+        Write-Host "Yandex Browser installed on " + $PC    
+    } # end #check_connect block
+} # end foreach cycle
